@@ -688,7 +688,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-icon">
-            <img src="/icons/icon-192.png" alt="抽卡簿" width={34} height={34} />
+            <img src="/icons/portrait-192.png" alt="抽卡簿" width={34} height={34} />
           </div>
           {!collapsed && (
             <div>
