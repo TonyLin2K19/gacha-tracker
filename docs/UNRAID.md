@@ -1,6 +1,6 @@
 # 用發布的 Docker 映像更新 Unraid
 
-預定 GitHub 倉庫：`TonyLin2K19/gacha-tracker`。GitHub Actions 在 main 推送通過建置與測試後，發布 `ghcr.io/tonylin2k19/gacha-tracker:latest`。版本標籤如 `v0.2.2` 發布 `:0.2.2`，各次發布另有 `:sha-<commit>` 供回退。
+GitHub 倉庫：`TonyLin2K19/gacha-tracker`。GitHub Actions 在 main 推送通過建置與測試後，發布 `ghcr.io/tonylin2k19/gacha-tracker:latest`。版本標籤如 `v0.3.0` 發布 `:0.3.0`，各次發布另有 `:sha-<commit>` 供回退。
 
 ## 首次發布
 

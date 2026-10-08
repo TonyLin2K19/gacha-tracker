@@ -13,6 +13,7 @@ import {
   type Game,
 } from '../shared/model';
 import { linkedSetState } from '../shared/stats';
+import { rarityClass } from '../shared/pools';
 export function Field({
   label,
   children,
@@ -186,6 +187,7 @@ export function TrackForm({
         account,
         pool,
         pityGroup: group,
+        poolNames: track?.poolNames,
         rules: submittedRules,
         baseline,
       });
@@ -363,6 +365,18 @@ export function TrackForm({
             />
           </Field>
         </div>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={rules.inheritPity ?? true}
+            disabled={rules.linkLastFour}
+            onChange={(e) => patch({ inheritPity: e.target.checked })}
+          />
+          換池時繼承保底（墊抽與必 UP）
+        </label>
+        <p className="help">
+          關閉時新池從零開始，切回舊池恢復該池進度；機甲同色套裝仍依共用標記與各池獨立階段計算。
+        </p>
         <label className="check">
           <input
             type="checkbox"
@@ -838,7 +852,7 @@ export function SetCycleForm({
   );
   const current = linkedSetState(track, priorRecords);
   const nextNumber = (current?.pools.length ?? 1) + 1;
-  const defaultName = `${track.pool}${nextNumber}`;
+  const defaultName = `卡池${nextNumber}`;
   const pools = [...(current?.pools ?? [])];
   const editedId = record?.setPool?.id ?? record?.id;
   if (editedId && !pools.some((pool) => pool.id === editedId))
@@ -1210,7 +1224,7 @@ export function QuickTenForm({
               <button
                 key={position}
                 type="button"
-                className={`ten-pull-slot rarity-${Math.min(rarityIndex, 3)} ${
+                className={`ten-pull-slot ${rarityClass(rarityIndex, track.rules.rarities.length)} ${
                   linked && position >= 6 ? 'linked-set' : ''
                 }`}
                 onClick={() => cycle(position)}

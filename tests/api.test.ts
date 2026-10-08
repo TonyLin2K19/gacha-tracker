@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync, mkdirSync, writeFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defaultRules, emptyBaseline } from '../shared/model.js';
@@ -150,7 +151,73 @@ test('HTTP: baseline import, duplicate rejection, record editing, restore and st
     );
     const page = await fetch(base);
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /抽卡簿/);
+    assert.match(await page.text(), /星願旅記/);
+    assert.equal(
+      (await request(`/tracks/${trackId}/pools/initial`, 'PUT', { name: '初始 UP 池' })).status,
+      200,
+    );
+    assert.equal(
+      (await request('/state')).data.tracks.find((t: { id: string }) => t.id === trackId).poolNames
+        .initial,
+      '初始 UP 池',
+    );
+    const genericSwitch = await request('/records', 'POST', {
+      ...poolSwitch,
+      trackId,
+      setPool: { id: 'limited', inherit: false },
+      note: '限定角色',
+    });
+    assert.equal(genericSwitch.status, 200);
+    assert.equal(
+      (await request(`/tracks/${trackId}/pools/limited`, 'PUT', { name: '限定修正名' })).status,
+      200,
+    );
+    const beforeDelete = (await request('/state')).data;
+    const filesBefore = readdirSync(join(dir, 'backups'));
+    assert.equal(
+      (await request('/tracks/' + trackId, 'DELETE', { confirmation: 'delete' })).status,
+      400,
+    );
+    assert.equal(
+      (await request('/games/' + g.data.id, 'DELETE', { confirmation: '' })).status,
+      400,
+    );
+    assert.deepEqual((await request('/state')).data, beforeDelete);
+    assert.deepEqual(readdirSync(join(dir, 'backups')), filesBefore);
+    assert.equal(
+      (await request('/tracks/' + trackId, 'DELETE', { confirmation: 'DELETE' })).status,
+      200,
+    );
+    const trackBackup = readdirSync(join(dir, 'backups')).find(
+      (f) => f.startsWith('before-delete-track') && f.endsWith('.db'),
+    )!;
+    const restoredDb = new DatabaseSync(join(dir, 'backups', trackBackup), { readOnly: true });
+    assert.ok(restoredDb.prepare('SELECT id FROM tracks WHERE id=?').get(trackId));
+    assert.ok(restoredDb.prepare('SELECT id FROM records WHERE track_id=?').get(trackId));
+    assert.equal(restoredDb.prepare('PRAGMA integrity_check').get()?.integrity_check, 'ok');
+    restoredDb.close();
+    assert.equal(
+      (await request('/games/' + g.data.id, 'DELETE', { confirmation: 'DELETE' })).status,
+      200,
+    );
+    state = (await request('/state')).data;
+    assert.ok(!state.games.some((x: { id: string }) => x.id === g.data.id));
+    assert.ok(!state.tracks.some((x: { gameId: string }) => x.gameId === g.data.id));
+    assert.equal(state.records.length, 0);
+    assert.ok(state.games.some((x: { id: string }) => x.id === g2.data.id));
+    // A backup filesystem failure must prevent the deletion, even with correct confirmation.
+    const blockedDir = join(dir, 'backups');
+    rmSync(blockedDir, { recursive: true });
+    writeFileSync(blockedDir, 'block directory creation');
+    assert.equal(
+      (await request('/games/' + g2.data.id, 'DELETE', { confirmation: 'DELETE' })).status,
+      400,
+    );
+    assert.ok(
+      (await request('/state')).data.games.some((x: { id: string }) => x.id === g2.data.id),
+    );
+    rmSync(blockedDir);
+    mkdirSync(blockedDir);
   } finally {
     child.kill('SIGTERM');
     await new Promise<void>((resolve) => child.once('exit', () => resolve()));

@@ -41,6 +41,8 @@ import { Sheet } from './components/ui/sheet';
 import ImportForm from './ImportForm';
 import { GameForm, TrackForm, RecordForm, QuickTenForm, SetCycleForm, Field } from './Forms';
 import { api, download } from './api';
+import { PoolManager, PoolSwitchForm, DeleteConfirmation } from './PoolManager';
+import { poolCatalog, rarityClass } from '../shared/pools';
 import { summarize, intervalClass, type RecentInterval, type Stats } from '../shared/stats';
 import {
   defaultRules,
@@ -51,6 +53,8 @@ import {
   type Game,
 } from '../shared/model';
 const empty: Snapshot = { version: 1, games: [], tracks: [], records: [], settings: {} };
+const CycleForm = (props: Parameters<typeof SetCycleForm>[0]) =>
+  props.track.rules.linkLastFour ? <SetCycleForm {...props} /> : <PoolSwitchForm {...props} />;
 const num = (n: number) => n.toLocaleString('en-US');
 const lastGameKey = 'gacha-ledger:last-game';
 function rememberedGame() {
@@ -103,6 +107,8 @@ type Modal =
   | { type: 'record'; track: Track; record?: DrawRecord }
   | { type: 'ten'; track: Track; record?: DrawRecord }
   | { type: 'cycle'; track: Track; record?: DrawRecord }
+  | { type: 'pools'; track?: Track }
+  | { type: 'delete'; endpoint: string; title: string; description: string }
   | { type: 'backup' }
   | { type: 'import' }
   | null;
@@ -273,22 +279,31 @@ export default function App() {
               <small>
                 {row.original.server} / {row.original.account}
                 {row.original.stats.shared ? ' · 共用保底' : ''}
-                {row.original.stats.setState
-                  ? ` · 目前 ${row.original.stats.setState.cycleName}`
-                  : ''}
+                {' · 目前 ' +
+                  (() => {
+                    const pools = poolCatalog(row.original, data.records);
+                    return pools.periods.find((p) => p.id === pools.activeId)?.name;
+                  })()}
               </small>
             </div>
           </div>
         ),
       },
-      ...rarityNames.map((name, i): ColumnDef<Row> => ({
+      ...rarityNames.map((name): ColumnDef<Row> => ({
         id: 'rarity_' + name,
         header: name,
         size: 78,
         minSize: 58,
         accessorFn: (r) => r.stats.counts[name] || 0,
-        cell: ({ getValue }) => (
-          <span className={i === 0 ? 'rarity-top' : 'numeric'}>{num(getValue<number>())}</span>
+        cell: ({ getValue, row }) => (
+          <span
+            className={rarityClass(
+              row.original.rules.rarities.findIndex((r) => r.name === name),
+              row.original.rules.rarities.length,
+            )}
+          >
+            {num(getValue<number>())}
+          </span>
         ),
       })),
       {
@@ -688,11 +703,11 @@ export default function App() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-icon">
-            <img src="/icons/portrait-192.png" alt="抽卡簿" width={34} height={34} />
+            <img src="/icons/portrait-192.png" alt="星願旅記" width={34} height={34} />
           </div>
           {!collapsed && (
             <div>
-              抽卡簿<small>GACHA LEDGER</small>
+              星願旅記<small>GACHA JOURNEY</small>
             </div>
           )}
         </div>
@@ -744,7 +759,7 @@ export default function App() {
           </button>
           {!collapsed && (
             <div className="local-status">
-              <i /> UNRAID · SELF HOSTED <small>v0.2.2</small>
+              <i /> UNRAID · SELF HOSTED <small>v0.3.0</small>
             </div>
           )}
         </div>
@@ -803,8 +818,24 @@ export default function App() {
                     <Pencil size={14} />
                   </button>
                 )}
+                {game && (
+                  <button
+                    className="icon-button off"
+                    aria-label="刪除遊戲"
+                    onClick={() =>
+                      setModal({
+                        type: 'delete',
+                        endpoint: '/games/' + game.id,
+                        title: '刪除遊戲',
+                        description: `「${game.name}」及其 ${tracks.length} 個卡池、全部池期與抽取紀錄`,
+                      })
+                    }
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </h1>
-              <p>把運氣留給抽卡，把數字交給抽卡簿。</p>
+              <p>把運氣留給抽卡，把數字交給星願旅記。</p>
             </div>
             <div className="flex gap-2">
               {game && (
@@ -875,6 +906,13 @@ export default function App() {
                 </div>
               </div>
               <div className="tabs-bar">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setModal({ type: 'pools', track: chosen })}
+                >
+                  卡池列表
+                </Button>
                 <div className="tabs">
                   <button
                     className={tab === 'overview' ? 'active' : ''}
@@ -1214,6 +1252,10 @@ export default function App() {
                           .map((r, i) => (
                             <Button
                               key={r.name}
+                              className={rarityClass(
+                                chosen.rules.rarities.length - 1 - i,
+                                chosen.rules.rarities.length,
+                              )}
                               variant={
                                 i === chosen.rules.rarities.length - 1 ? 'default' : 'outline'
                               }
@@ -1236,16 +1278,20 @@ export default function App() {
                           <Table2 />
                           快速十抽
                         </Button>
-                        {chosen.rules.linkLastFour && (
+                        {
                           <Button
                             variant="outline"
-                            title="選擇舊套裝池或新增；共用保障標記，恢復各池自己的保底階段"
+                            title={
+                              chosen.rules.linkLastFour
+                                ? '共用保障標記，恢復各池自己的保底階段'
+                                : '選擇舊池或新增 UP 卡池，依設定繼承保底'
+                            }
                             onClick={() => setModal({ type: 'cycle', track: chosen })}
                           >
                             <RefreshCw />
-                            換套裝池
+                            換池
                           </Button>
-                        )}
+                        }
                         <Button
                           variant="ghost"
                           title="自訂時間、混合結果、UP／歪"
@@ -1292,6 +1338,7 @@ export default function App() {
                                 pool: chosen.pool + '（新池）',
                                 baseline: structuredClone(emptyBaseline),
                                 pityGroup: '',
+                                poolNames: undefined,
                               },
                             })
                           }
@@ -1302,14 +1349,14 @@ export default function App() {
                         <button
                           className="off"
                           disabled={busy}
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `刪除「${chosen.server} / ${chosen.account} / ${chosen.pool}」與全部紀錄？刪除前會自動備份。`,
-                              )
-                            )
-                              act(() => api('/tracks/' + chosen.id, 'DELETE'), '已刪除卡池');
-                          }}
+                          onClick={() =>
+                            setModal({
+                              type: 'delete',
+                              endpoint: '/tracks/' + chosen.id,
+                              title: '刪除卡池',
+                              description: `${chosen.server} / ${chosen.account} / ${chosen.pool}（包含所有池期與紀錄）`,
+                            })
+                          }
                         >
                           <Trash2 size={12} />
                           刪除卡池
@@ -1348,11 +1395,26 @@ export default function App() {
                               <td>
                                 {t.server} / {t.account}
                               </td>
-                              <td>{t.pool}</td>
+                              <td>
+                                {t.pool}
+                                <small>
+                                  {' '}
+                                  ·{' '}
+                                  {
+                                    poolCatalog(t, data.records).periods.find(
+                                      (p) =>
+                                        p.records.some((item) => item.id === r.id) ||
+                                        (r.kind === 'cycle_reset' &&
+                                          p.id === (r.setPool?.id ?? r.id)),
+                                    )?.name
+                                  }
+                                </small>
+                              </td>
                               <td>
                                 {r.kind === 'cycle_reset' ? (
                                   <span className="badge">
-                                    {r.setPool ? '切換至' : '開始'} {r.note}
+                                    {r.setPool ? '切換至' : '開始'}{' '}
+                                    {t.poolNames?.[r.setPool?.id ?? r.id] ?? r.note}
                                     {r.setPool?.marks !== undefined
                                       ? ` · 標記校正 ${r.setPool.marks ?? '未知'}`
                                       : ''}
@@ -1362,9 +1424,10 @@ export default function App() {
                                     {r.results.map((x, i) => (
                                       <span
                                         key={i}
-                                        className={
-                                          x.rarity === t.rules.rarities[0].name ? 'rarity-top' : ''
-                                        }
+                                        className={rarityClass(
+                                          t.rules.rarities.findIndex((v) => v.name === x.rarity),
+                                          t.rules.rarities.length,
+                                        )}
                                       >
                                         {x.rarity} × {x.count}
                                         {x.outcome === 'up'
@@ -1473,7 +1536,7 @@ export default function App() {
               )}
               <footer className="workspace-footer">
                 <span>
-                  GACHA LEDGER <span> / </span> 你的紀錄，你的資料。
+                  GACHA JOURNEY <span> / </span> 你的紀錄，你的資料。
                 </span>
                 <button onClick={() => setModal({ type: 'backup' })}>
                   <Database size={12} />
@@ -1551,7 +1614,7 @@ export default function App() {
         />
       )}
       {modal?.type === 'cycle' && (
-        <SetCycleForm
+        <CycleForm
           track={modal.track}
           records={data.records}
           record={modal.record}
@@ -1559,7 +1622,29 @@ export default function App() {
           saved={async (id) => {
             if (!modal.record) setLastId(id);
             await load();
-            setToast('已儲存套裝池切換');
+            setToast('已儲存換池紀錄');
+          }}
+        />
+      )}
+      {modal?.type === 'pools' && (
+        <PoolManager
+          tracks={tracks}
+          records={data.records}
+          initialTrack={modal.track?.id}
+          close={() => setModal(null)}
+          saved={load}
+          switchPool={(track) => setModal({ type: 'cycle', track })}
+        />
+      )}
+      {modal?.type === 'delete' && (
+        <DeleteConfirmation
+          endpoint={modal.endpoint}
+          title={modal.title}
+          description={modal.description}
+          close={() => setModal(null)}
+          saved={async () => {
+            await load();
+            setToast('已備份 DB 並刪除');
           }}
         />
       )}

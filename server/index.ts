@@ -24,7 +24,7 @@ app.disable('x-powered-by');
 app.use('/api', (req, res, next) => {
   if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     if (req.headers['x-gacha-request'] !== '1') {
-      res.status(403).json({ error: '請從抽卡簿介面送出操作' });
+      res.status(403).json({ error: '請從星願旅記介面送出操作' });
       return;
     }
     const origin = req.headers.origin;
@@ -94,15 +94,20 @@ app.put(
   },
 );
 app.delete('/api/games/:id', (req, res) => {
+  z.literal('DELETE').parse(req.body.confirmation);
   const snapshot = store.snapshot();
-  if (snapshot.tracks.some((t) => t.gameId === req.params.id))
-    throw new Error('請先刪除遊戲下的卡池');
   const game = snapshot.games.find((item) => item.id === req.params.id);
-  store.db.prepare('DELETE FROM games WHERE id=?').run(req.params.id);
-  if (game?.icon && basename(game.icon) === game.icon) {
-    const iconPath = resolve(iconDir, game.icon);
-    if (existsSync(iconPath)) unlinkSync(iconPath);
-  }
+  if (!game) throw new Error('遊戲不存在');
+  store.backupDatabase('before-delete-game');
+  store.backup('before-delete-game');
+  store.transaction(() => {
+    store.db
+      .prepare('DELETE FROM records WHERE track_id IN (SELECT id FROM tracks WHERE game_id=?)')
+      .run(req.params.id);
+    store.db.prepare('DELETE FROM tracks WHERE game_id=?').run(req.params.id);
+    store.db.prepare('DELETE FROM games WHERE id=?').run(req.params.id);
+  });
+  // Keep the icon file so restoring a pre-deletion backup also restores its reference.
   res.json({ ok: true });
 });
 app.post('/api/tracks/import', (req, res) => {
@@ -150,11 +155,31 @@ function saveTrack(req: express.Request, res: express.Response) {
 app.post('/api/tracks', saveTrack);
 app.put('/api/tracks/:id', saveTrack);
 app.delete('/api/tracks/:id', (req, res) => {
-  store.backup('before-delete');
+  z.literal('DELETE').parse(req.body.confirmation);
+  if (!store.snapshot().tracks.some((t) => t.id === req.params.id)) throw new Error('卡池不存在');
+  store.backupDatabase('before-delete-track');
+  store.backup('before-delete-track');
   store.transaction(() => {
     store.db.prepare('DELETE FROM records WHERE track_id=?').run(req.params.id);
     store.db.prepare('DELETE FROM tracks WHERE id=?').run(req.params.id);
   });
+  res.json({ ok: true });
+});
+app.put('/api/tracks/:id/pools/:poolId', (req, res) => {
+  const name = z.string().trim().min(1).max(80).parse(req.body.name);
+  const snap = store.snapshot();
+  const track = snap.tracks.find((t) => t.id === req.params.id);
+  if (!track) throw new Error('卡池不存在');
+  const id = String(req.params.poolId);
+  if (
+    id !== 'initial' &&
+    !snap.records.some(
+      (r) => r.trackId === track.id && r.kind === 'cycle_reset' && (r.setPool?.id ?? r.id) === id,
+    )
+  )
+    throw new Error('池期不存在');
+  track.poolNames = { ...track.poolNames, [id]: name };
+  store.db.prepare('UPDATE tracks SET body=? WHERE id=?').run(JSON.stringify(track), track.id);
   res.json({ ok: true });
 });
 function saveRecord(req: express.Request, res: express.Response) {
@@ -222,7 +247,7 @@ app.use(
   },
 );
 const server = app.listen(Number(process.env.PORT || 3000), '0.0.0.0', () =>
-  console.log('Gacha Ledger running on port ' + (process.env.PORT || 3000)),
+  console.log('GACHA JOURNEY running on port ' + (process.env.PORT || 3000)),
 );
 // Application-level snapshots are consistent because requests and this callback are synchronous.
 const timer = setInterval(

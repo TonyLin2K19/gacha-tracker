@@ -1,7 +1,7 @@
 services:
   gacha-tracker:
     build: .
-    image: gacha-tracker:0.2.2
+    image: gacha-tracker:0.3.0
     container_name: gacha-tracker
     restart: unless-stopped
     ports:

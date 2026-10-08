@@ -1075,12 +1075,12 @@ h1 .icon-button {
   font-size: 15px;
   font-weight: 650;
 }
-.ten-pull-slot.rarity-0 {
+.ten-pull-slot.rarity-tone-1 {
   border-color: #c49b49;
   background: #b58a3217;
   color: #c18f2e;
 }
-.ten-pull-slot.rarity-1 {
+.ten-pull-slot.rarity-tone-2 {
   border-color: #8873b6;
   background: #745ea317;
   color: #927bc5;
@@ -1431,4 +1431,78 @@ h1 .icon-button {
 }
 .full-overview .table-foot {
   flex-shrink: 0;
+}
+
+/* Rarity rank: rainbow, gold, purple, green. */
+.rarity-tone-0 {
+  color: #c275b7;
+  font-weight: 650;
+}
+.rarity-tone-0:not(.ten-pull-slot),
+.ten-pull-slot.rarity-tone-0 strong {
+  background: linear-gradient(110deg, #d45c9e, #b88c21, #238f9c, #8e67ce);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+.dark .rarity-tone-0:not(.ten-pull-slot),
+.dark .ten-pull-slot.rarity-tone-0 strong {
+  background-image: linear-gradient(110deg, #ff9bd3, #ffe395, #8ce8eb, #cca7ff);
+}
+.rarity-tone-1 {
+  color: #a87512;
+  font-weight: 650;
+}
+.rarity-tone-2 {
+  color: #8560b5;
+}
+.rarity-tone-3 {
+  color: #26825d;
+}
+.dark .rarity-tone-1 {
+  color: #ebbd5c;
+}
+.dark .rarity-tone-2 {
+  color: #c09ae9;
+}
+.dark .rarity-tone-3 {
+  color: #76cba4;
+}
+.ten-pull-slot.rarity-tone-0 {
+  border-color: #ba8cc9;
+  background: linear-gradient(125deg, #e59ab921, #eaca7321, #68c9da21, #aa8dda21);
+}
+.ten-pull-slot.rarity-tone-3 {
+  border-color: #55a67b;
+  background: #55a67b17;
+}
+.period-card,
+.period-detail {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+.period-heading,
+.period-edit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.period-edit input {
+  min-width: 0;
+  flex: 1;
+}
+.period-record {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.period-record time,
+.period-record small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.period-detail h3 {
+  margin-bottom: 12px;
+  font-weight: 650;
 }

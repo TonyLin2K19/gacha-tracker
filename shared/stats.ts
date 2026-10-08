@@ -34,7 +34,18 @@ export function pityState(track: Track, records: DrawRecord[], baseline = track.
   let hardHits = 0;
   let activePool = 'initial';
   const poolGuarantees = new Map<string, boolean | null>();
+  const poolProgress = new Map<string, { pity: number | null; guaranteed: boolean | null }>();
   for (const r of chronology(records)) {
+    if (!track.rules.linkLastFour && r.kind === 'cycle_reset') {
+      poolProgress.set(activePool, { pity, guaranteed });
+      activePool = r.setPool?.id ?? r.id;
+      if (!(r.setPool?.inherit ?? track.rules.inheritPity ?? true)) {
+        const prior = poolProgress.get(activePool);
+        pity = prior?.pity ?? (prior ? null : 0);
+        guaranteed = prior?.guaranteed ?? (prior ? null : false);
+      }
+      continue;
+    }
     if (track.rules.linkLastFour && r.kind === 'cycle_reset') {
       poolGuarantees.set(activePool, guaranteed);
       activePool = r.setPool?.id ?? r.id;
@@ -128,7 +139,7 @@ export function linkedSetState(track: Track, records: DrawRecord[]) {
   }));
   let setCount = intervals.length;
   let cycleNumber = 1;
-  let cycleName = `${track.pool}1`;
+  let cycleName = track.poolNames?.initial ?? '卡池一';
   let cycleId = 'initial';
   let marksMode = false;
   let marks: number | null = null;
@@ -151,7 +162,9 @@ export function linkedSetState(track: Track, records: DrawRecord[]) {
       }
       cycleId = record.setPool?.id ?? record.id;
       const prior = pools.get(cycleId);
-      cycleName = record.note.trim() || prior?.name || `${track.pool}${pools.size + 1}`;
+      cycleName =
+        track.poolNames?.[cycleId] ??
+        (record.note.trim() || prior?.name || `卡池${pools.size + 1}`);
       setCount = prior?.setCount ?? 0;
       guaranteed = prior ? prior.guaranteed : false;
       if (record.setPool?.marks !== undefined) marks = record.setPool.marks;

@@ -14,6 +14,7 @@ export const rulesSchema = z
     guaranteeAfterLoss: z.boolean().default(false),
     tenPullLayout: z.enum(['row', 'column']).default('row'),
     linkLastFour: z.boolean().default(false),
+    inheritPity: z.boolean().default(true),
     setPitySteps: z.array(z.number().int().min(1).max(1000)).max(20).default([]),
     tenGuarantee: z.string().max(200).default(''),
     notes: z.string().max(2000).default(''),
@@ -47,6 +48,7 @@ export const trackSchema = z.object({
   account: name,
   pool: name,
   pityGroup: z.string().trim().max(80).default(''),
+  poolNames: z.record(z.string(), name).optional(),
   rules: rulesSchema,
   baseline: baselineSchema,
 });
@@ -67,6 +69,7 @@ export const recordSchema = z
         marks: count.nullable().optional(),
         stage: count.optional(),
         guaranteed: z.boolean().nullable().optional(),
+        inherit: z.boolean().optional(),
       })
       .optional(),
     tenPull: z
@@ -109,7 +112,8 @@ export const recordSchema = z
     }
   });
 type ParsedRules = z.infer<typeof rulesSchema>;
-export type Rules = Omit<ParsedRules, 'setPitySteps'> & {
+export type Rules = Omit<ParsedRules, 'setPitySteps' | 'inheritPity'> & {
+  inheritPity?: boolean;
   /** 舊版卡池沒有套裝保底設定。 */
   setPitySteps?: ParsedRules['setPitySteps'];
 };
@@ -226,7 +230,13 @@ export function validateTrack(t: Track | z.infer<typeof trackSchema>) {
 export function validateRecord(r: DrawRecord | z.infer<typeof recordSchema>, t: Track) {
   const names = t.rules.rarities.map((x) => x.name);
   if (r.kind === 'cycle_reset') {
-    if (!t.rules.linkLastFour) throw new Error('只有同色套裝卡池可以重置套裝輪次');
+    if (!t.rules.linkLastFour && !r.setPool) throw new Error('換池紀錄需要池期識別');
+    if (
+      !t.rules.linkLastFour &&
+      r.setPool &&
+      ('marks' in r.setPool || 'stage' in r.setPool || 'guaranteed' in r.setPool)
+    )
+      throw new Error('一般換池不可包含機甲標記校正');
     return;
   }
   for (const x of r.results) {
@@ -270,7 +280,13 @@ export function validateGroups(tracks: Track[]) {
   }
   for (const g of groups.values())
     if (g.length > 1) {
-      if (g.some((t) => JSON.stringify(t.rules) !== JSON.stringify(g[0].rules)))
+      if (
+        g.some(
+          (t) =>
+            JSON.stringify(rulesSchema.parse(t.rules)) !==
+            JSON.stringify(rulesSchema.parse(g[0].rules)),
+        )
+      )
         throw new Error('共用保底的卡池必須使用完全相同的規則');
       if (
         g.some(

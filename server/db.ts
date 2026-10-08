@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import type { Snapshot, Game, Track, DrawRecord } from '../shared/model.js';
+import { randomUUID } from 'node:crypto';
 export function createStore(path: string) {
   mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
@@ -97,5 +98,16 @@ export function createStore(path: string) {
     writeFileSync(file, JSON.stringify(snapshot(), null, 2));
     return file;
   }
-  return { db, snapshot, transaction, replace, backup };
+  function backupDatabase(prefix = 'before-delete') {
+    const dir = resolve(dirname(path), 'backups');
+    mkdirSync(dir, { recursive: true });
+    const file = resolve(
+      dir,
+      `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}.db`,
+    );
+    // VACUUM INTO produces a consistent SQLite copy including committed WAL contents.
+    db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+    return file;
+  }
+  return { db, snapshot, transaction, replace, backup, backupDatabase };
 }
