@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-server/
+data/
+*.log
+.env
+.env.*
+!.env.example
+*.zip
+*.db
+*.db-*
+gacha-backup*.json
+backups/
+.backup-verification/
+.verify*
+screenshots/

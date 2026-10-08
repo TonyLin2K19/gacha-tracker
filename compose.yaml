@@ -1,0 +1,23 @@
+services:
+  gacha-tracker:
+    build: .
+    image: gacha-tracker:0.2.2
+    container_name: gacha-tracker
+    restart: unless-stopped
+    ports:
+      - '3080:3000'
+    environment:
+      NODE_ENV: production
+      DATA_DIR: /data
+      TZ: Asia/Taipei
+    # Unraid nobody:users; prepare the host folder with matching ownership.
+    user: '99:100'
+    volumes:
+      - /mnt/user/appdata/gacha-tracker:/data
+    init: true
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
