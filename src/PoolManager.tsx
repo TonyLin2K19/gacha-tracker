@@ -109,7 +109,7 @@ export function PoolSwitchForm({
           ordered: true,
           kind: 'cycle_reset',
           setPool: {
-            id: id === 'new' ? crypto.randomUUID() : id,
+            ...(id === 'new' ? { create: true } : { id }),
             inherit: record?.setPool?.inherit ?? track.rules.inheritPity ?? true,
           },
           results: [],

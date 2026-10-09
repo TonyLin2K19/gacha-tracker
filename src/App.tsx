@@ -136,7 +136,7 @@ export default function App() {
   const [dark, setDark] = useState(false),
     [collapsed, setCollapsed] = useState(false),
     [sizing, setSizing] = useState<ColumnSizingState>({}),
-    [visibility, setVisibility] = useState<VisibilityState>({
+    [legacyVisibility, setLegacyVisibility] = useState<VisibilityState>({
       expected: false,
       min: false,
       max: false,
@@ -147,6 +147,18 @@ export default function App() {
     [sorting, setSorting] = useState<SortingState>([]),
     [columnsOpen, setColumnsOpen] = useState(false),
     [ready, setReady] = useState(false);
+  const [visibilityByGame, setVisibilityByGame] = useState<Record<string, VisibilityState>>({});
+  const visibility = visibilityByGame[gameId] ?? legacyVisibility;
+  const setVisibility = (
+    update: VisibilityState | ((previous: VisibilityState) => VisibilityState),
+  ) => {
+    if (!gameId) return;
+    setVisibilityByGame((previous) => ({
+      ...previous,
+      [gameId]:
+        typeof update === 'function' ? update(previous[gameId] ?? legacyVisibility) : update,
+    }));
+  };
   const initialized = useRef(false),
     quickPanel = useRef<HTMLDivElement>(null),
     workspace = useRef<HTMLDivElement>(null),
@@ -165,6 +177,7 @@ export default function App() {
             collapsed?: boolean;
             sizing?: ColumnSizingState;
             visibility?: VisibilityState;
+            visibilityByGame?: Record<string, VisibilityState>;
             layoutVersion?: number;
           }
         | undefined;
@@ -174,7 +187,8 @@ export default function App() {
         setSizing(
           (s.layoutVersion ?? 1) < 2 ? { ...(s.sizing ?? {}), identity: 180 } : (s.sizing ?? {}),
         );
-        if (s.visibility) setVisibility(s.visibility);
+        if (s.visibility) setLegacyVisibility(s.visibility);
+        if (s.visibilityByGame) setVisibilityByGame(s.visibilityByGame);
       }
       initialized.current = true;
       setReady(true);
@@ -199,11 +213,18 @@ export default function App() {
     if (!ready) return;
     const timer = setTimeout(() => {
       api('/settings/layout', 'PUT', {
-        value: { dark, collapsed, sizing, visibility, layoutVersion: 2 },
+        value: {
+          dark,
+          collapsed,
+          sizing,
+          visibility: legacyVisibility,
+          visibilityByGame,
+          layoutVersion: 3,
+        },
       }).catch((e) => setError('版面設定未儲存：' + e.message));
     }, 500);
     return () => clearTimeout(timer);
-  }, [dark, collapsed, sizing, visibility, ready]);
+  }, [dark, collapsed, sizing, legacyVisibility, visibilityByGame, ready]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(''), 4000);
@@ -759,7 +780,7 @@ export default function App() {
           </button>
           {!collapsed && (
             <div className="local-status">
-              <i /> UNRAID · SELF HOSTED <small>v0.3.0</small>
+              <i /> UNRAID · SELF HOSTED <small>v0.3.1</small>
             </div>
           )}
         </div>

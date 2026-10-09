@@ -168,6 +168,43 @@ test('HTTP: baseline import, duplicate rejection, record editing, restore and st
       note: '限定角色',
     });
     assert.equal(genericSwitch.status, 200);
+    // HTTP browsers may not expose crypto.randomUUID: both forms request a server-generated ID.
+    for (const [poolTrack, extra] of [
+      [trackId, { inherit: false }],
+      [mech.data.id, { marks: 8, stage: 1, guaranteed: false }],
+    ] as const) {
+      const created = await request('/records', 'POST', {
+        ...poolSwitch,
+        trackId: poolTrack,
+        note: 'HTTP 新增池期',
+        setPool: { create: true, ...extra },
+      });
+      assert.equal(created.status, 200);
+      const saved = (await request('/state')).data.records.find(
+        (r: { id: string }) => r.id === created.data.id,
+      );
+      assert.match(
+        saved.setPool.id,
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      assert.equal(saved.setPool.create, undefined);
+      for (const [key, value] of Object.entries(extra)) assert.equal(saved.setPool[key], value);
+      assert.equal(
+        (
+          await request(`/tracks/${poolTrack}/pools/${saved.setPool.id}`, 'PUT', {
+            name: 'HTTP 新池更名',
+          })
+        ).status,
+        200,
+      );
+    }
+    const perGameLayout = {
+      visibility: { next: false },
+      visibilityByGame: { [g.data.id]: { next: true }, [g2.data.id]: { next: false } },
+      layoutVersion: 3,
+    };
+    assert.equal((await request('/settings/layout', 'PUT', { value: perGameLayout })).status, 200);
+    assert.deepEqual((await request('/state')).data.settings.layout, perGameLayout);
     assert.equal(
       (await request(`/tracks/${trackId}/pools/limited`, 'PUT', { name: '限定修正名' })).status,
       200,

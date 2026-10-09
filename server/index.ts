@@ -183,7 +183,12 @@ app.put('/api/tracks/:id/pools/:poolId', (req, res) => {
   res.json({ ok: true });
 });
 function saveRecord(req: express.Request, res: express.Response) {
-  const input = recordSchema.parse(req.body);
+  const body = { ...req.body };
+  if (body.kind === 'cycle_reset' && body.setPool?.create === true) {
+    body.setPool = { ...body.setPool, id: randomUUID() };
+    delete body.setPool.create;
+  }
+  const input = recordSchema.parse(body);
   input.at = new Date(input.at).toISOString();
   const track = store.snapshot().tracks.find((t) => t.id === input.trackId);
   if (!track) throw new Error('卡池不存在');

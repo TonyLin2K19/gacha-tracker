@@ -906,7 +906,7 @@ export function SetCycleForm({
           at: new Date(at).toISOString(),
           kind: 'cycle_reset',
           setPool: {
-            id: poolId === 'new' ? crypto.randomUUID() : poolId,
+            ...(poolId === 'new' ? { create: true } : { id: poolId }),
             ...(calibrate
               ? {
                   marks: marks.trim() === '' ? null : Number(marks),

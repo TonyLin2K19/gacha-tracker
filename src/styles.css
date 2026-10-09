@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 @custom-variant dark (&:is(.dark *));
 :root {
+  color-scheme: light;
   --background: #fff;
   --foreground: #223247;
   --primary: #087f74;
@@ -16,6 +17,7 @@
   --group: #f1f5f7;
 }
 .dark {
+  color-scheme: dark;
   --background: #141d29;
   --foreground: #dce5ef;
   --primary: #3fb8a6;
@@ -93,6 +95,11 @@ textarea::placeholder {
 }
 select {
   height: 32px;
+}
+select option,
+select optgroup {
+  color: var(--foreground);
+  background-color: var(--background);
 }
 small,
 .subtle,

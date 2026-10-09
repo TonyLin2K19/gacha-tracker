@@ -28,6 +28,10 @@ GitHub 倉庫：`TonyLin2K19/gacha-tracker`。GitHub Actions 在 main 推送通�
 
 程式推送至 main → GitHub Actions 通過驗證並發布 latest → 在 Unraid Docker 頁面檢查更新並更新 gacha-tracker。資料庫與遊戲圖示持續使用原 `/data` 掛載。
 
+若 latest 未出現更新提示，先執行 docker pull ghcr.io/tonylin2k19/gacha-tracker:latest，再到 Unraid 編輯容器並按 Apply，重新建立容器；單純 Restart 不會切換映像。瀏覽器按 Ctrl+F5 更新前端。
+
+資料掛載請固定使用 /mnt/user/appdata/gacha-tracker → /data（讀寫），不要使用匿名 volume；沿用 --user 99:100。
+
 ## 不上傳的檔案
 
 Git 與 Docker 建置內容排除備份 JSON、SQLite 檔、資料目錄、環境設定、測試副本、ZIP 與介面截圖。GitHub Actions 使用自動提供的 GITHUB_TOKEN 發布，不需要將個人 Token 寫進程式。
