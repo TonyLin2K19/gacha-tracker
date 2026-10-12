@@ -38,3 +38,12 @@ export function poolPeriods(track: Track, all: DrawRecord[]) {
 export function rarityClass(index: number, count: number) {
   return `rarity-tone-${count >= 4 ? Math.min(index, 3) : Math.min(index + 1, 3)}`;
 }
+
+/** Merged overview columns use the fullest scale containing each label. */
+export function overviewRarityClass(name: string, tracks: Pick<Track, 'rules'>[]) {
+  const scale = tracks
+    .map((track) => track.rules.rarities)
+    .filter((rarities) => rarities.some((rarity) => rarity.name === name))
+    .sort((a, b) => b.length - a.length)[0];
+  return scale ? rarityClass(scale.findIndex((rarity) => rarity.name === name), scale.length) : '';
+}

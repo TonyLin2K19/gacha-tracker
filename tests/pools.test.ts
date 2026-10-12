@@ -8,7 +8,7 @@ import {
   type Track,
   type DrawRecord,
 } from '../shared/model.js';
-import { poolPeriods, rarityClass } from '../shared/pools.js';
+import { poolPeriods, rarityClass, overviewRarityClass } from '../shared/pools.js';
 import { summarize, pityState } from '../shared/stats.js';
 
 const track = (): Track => ({
@@ -128,6 +128,26 @@ test('rarity rank colors handle four ranks and three ranks independent of labels
   assert.deepEqual(
     [0, 1, 2].map((i) => rarityClass(i, 3)),
     ['rarity-tone-1', 'rarity-tone-2', 'rarity-tone-3'],
+  );
+});
+
+test('overview aligns full and partial rarity scales by column name', () => {
+  const full = track();
+  const shipping = track();
+  shipping.rules = { ...shipping.rules, rarities: full.rules.rarities.slice(1) };
+  const tracks = [shipping, full];
+  assert.deepEqual(
+    ['SSR', 'SR', 'R'].map((name) => overviewRarityClass(name, tracks)),
+    ['rarity-tone-1', 'rarity-tone-2', 'rarity-tone-3'],
+  );
+  assert.equal(overviewRarityClass('不存在', tracks), '');
+  full.rules = {
+    ...full.rules,
+    rarities: ['六星', '五星', '四星', '三星'].map((name) => ({ name, rate: 25 })),
+  };
+  assert.deepEqual(
+    full.rules.rarities.map((rarity) => overviewRarityClass(rarity.name, [full])),
+    ['rarity-tone-0', 'rarity-tone-1', 'rarity-tone-2', 'rarity-tone-3'],
   );
 });
 

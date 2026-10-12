@@ -42,7 +42,7 @@ import ImportForm from './ImportForm';
 import { GameForm, TrackForm, RecordForm, QuickTenForm, SetCycleForm, Field } from './Forms';
 import { api, download } from './api';
 import { PoolManager, PoolSwitchForm, DeleteConfirmation } from './PoolManager';
-import { poolCatalog, rarityClass } from '../shared/pools';
+import { poolCatalog, rarityClass, overviewRarityClass } from '../shared/pools';
 import { summarize, intervalClass, type RecentInterval, type Stats } from '../shared/stats';
 import {
   defaultRules,
@@ -316,13 +316,8 @@ export default function App() {
         size: 78,
         minSize: 58,
         accessorFn: (r) => r.stats.counts[name] || 0,
-        cell: ({ getValue, row }) => (
-          <span
-            className={rarityClass(
-              row.original.rules.rarities.findIndex((r) => r.name === name),
-              row.original.rules.rarities.length,
-            )}
-          >
+        cell: ({ getValue }) => (
+          <span className={overviewRarityClass(name, tracks)}>
             {num(getValue<number>())}
           </span>
         ),
