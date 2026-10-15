@@ -192,6 +192,13 @@ function saveRecord(req: express.Request, res: express.Response) {
   input.at = new Date(input.at).toISOString();
   const track = store.snapshot().tracks.find((t) => t.id === input.trackId);
   if (!track) throw new Error('卡池不存在');
+  if (input.kind === 'cycle_reset' && input.setPool && !track.rules.linkLastFour) {
+    const previous =
+      req.method === 'PUT'
+        ? store.snapshot().records.find((r) => r.id === String(req.params.id))
+        : undefined;
+    input.setPool.upInherit ??= previous?.setPool?.upInherit ?? track.rules.upInheritPity ?? false;
+  }
   validateRecord(input, track);
   const id = String(req.params.id || randomUUID());
   if (req.method === 'PUT') {

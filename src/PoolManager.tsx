@@ -111,6 +111,7 @@ export function PoolSwitchForm({
           setPool: {
             ...(id === 'new' ? { create: true } : { id }),
             inherit: record?.setPool?.inherit ?? track.rules.inheritPity ?? true,
+            upInherit: record?.setPool?.upInherit ?? track.rules.upInheritPity ?? false,
           },
           results: [],
           note: poolName,
@@ -138,6 +139,14 @@ export function PoolSwitchForm({
             : '新池從零開始；切回舊池恢復該池最後的墊抽與必 UP 狀態。'}{' '}
           總累積與歷史紀錄保留。
         </p>
+        {!!track.rules.upHardPity && (
+          <p className="help">
+            大保底：
+            {(record?.setPool?.upInherit ?? track.rules.upInheritPity)
+              ? '換池繼承目前進度。'
+              : '新池歸零，切回舊池恢復其進度。'}
+          </p>
+        )}
         <Field label="卡池">
           <select value={id} onChange={(e) => setId(e.target.value)}>
             {periods.map((p) => (
@@ -352,7 +361,7 @@ export function PoolManager({
                     ))}
                   </div>
                   <small>
-                    {r.kind === 'reward' ? '獎勵' : '抽取'} {r.note}
+                    {r.gift ? '贈送抽取' : r.kind === 'reward' ? '獎勵' : '抽取'} {r.note}
                   </small>
                 </div>
               ))}

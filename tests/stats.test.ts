@@ -50,6 +50,159 @@ const result = (rarity: string, count: number, outcome: 'unknown' | 'up' | 'off'
   count,
   outcome,
 });
+
+test('gift ten-pulls retain results and statistics without changing either pity or guarantees', () => {
+  const t = track();
+  t.rules.upHardPity = 120;
+  t.baseline.pity = 45;
+  t.baseline.upPity = 100;
+  t.baseline.guaranteed = true;
+  const gift = record([result('R', 9), result('SSR', 1, 'up')], {
+    gift: true,
+    tenPull: { linkedLastFour: false, setRarity: null },
+  });
+  assert.equal(recordSchema.safeParse(gift).success, true);
+  const s = summarize(t, [gift], [t]);
+  assert.equal(s.total, 10);
+  assert.equal(s.top, 1);
+  assert.equal(s.up, 1);
+  assert.equal(s.pity, 45);
+  assert.equal(s.upPity, 100);
+  assert.equal(s.guaranteed, true);
+  assert.equal(s.intervals.length, 0);
+  t.rules.linkLastFour = true;
+  t.rules.setPitySteps = [9, 12, 15];
+  const before = linkedSetState(t, []);
+  assert.deepEqual(linkedSetState(t, [gift]), before);
+  assert.equal(recordSchema.safeParse({ ...gift, kind: 'reward' }).success, false);
+});
+
+test('UP hard pity counts through off-banner SSRs and repeats after each UP', () => {
+  const t = track();
+  t.rules = { ...t.rules, hardPity: 80, softStart: 0, upHardPity: 120, guaranteeAfterLoss: false };
+  const draws = [
+    record([result('R', 79)]),
+    record([result('SSR', 1, 'off')]),
+    record([result('R', 39)]),
+  ];
+  const s = pityState(t, draws);
+  assert.equal(s.pity, 39);
+  assert.equal(s.upPity, 119);
+  assert.equal(s.nextRate, 100);
+  assert.equal(s.guaranteed, true);
+  draws.push(record([result('SSR', 1, 'up'), result('R', 9)]));
+  const reset = pityState(t, draws);
+  assert.equal(reset.pity, 9);
+  assert.equal(reset.upPity, 9);
+  assert.equal(reset.guaranteed, false);
+  assert.equal(reset.nextRate, 2);
+  draws.push(record([result('SSR', 1, 'up')]));
+  assert.equal(pityState(t, draws).upPity, 0);
+});
+
+test('UP progress restores by pool, supports inheritance and does not guess unknown history', () => {
+  const t = track();
+  t.rules.upHardPity = 120;
+  const draws = [record([result('R', 30)])];
+  const change = (id: string, inherit: boolean) =>
+    record([], {
+      kind: 'cycle_reset',
+      note: id,
+      setPool: { id, inherit, upInherit: inherit },
+    });
+  draws.push(change('B', false), record([result('R', 10)]));
+  assert.equal(pityState(t, draws).upPity, 10);
+  draws.push(change('initial', false));
+  assert.equal(pityState(t, draws).upPity, 30);
+  draws.push(change('C', true));
+  assert.equal(pityState(t, draws).upPity, 30);
+  t.baseline.counts = { SSR: 1, R: 19 };
+  assert.equal(pityState(t, []).upPity, null);
+  t.baseline.upPity = 12;
+  assert.equal(pityState(t, []).upPity, 12);
+  assert.equal(pityState(t, [record([result('SSR', 1)])]).upPity, null);
+  assert.equal(pityState(t, [record([result('SSR', 1, 'up')])]).upPity, 0);
+  const unordered = record([result('SSR', 1, 'up'), result('R', 9)], { ordered: false });
+  assert.equal(pityState(t, [unordered]).upPity, null);
+  unordered.results[0].outcome = 'off';
+  assert.equal(pityState(t, [unordered]).upPity, 22);
+});
+
+test('UP and SSR inheritance are independent and switches retain event-time UP settings', () => {
+  const t = track();
+  t.rules.upHardPity = 120;
+  const start = record([result('R', 50)]);
+  const switchA = record([], {
+    kind: 'cycle_reset',
+    note: 'A',
+    setPool: { id: 'A', inherit: true, upInherit: false },
+  });
+  let s = pityState(t, [start, switchA]);
+  assert.equal(s.pity, 50);
+  assert.equal(s.upPity, 0);
+  t.rules.upInheritPity = true;
+  s = pityState(t, [start, switchA]);
+  assert.equal(s.upPity, 0);
+  const switchB = record([], {
+    kind: 'cycle_reset',
+    note: 'B',
+    setPool: { id: 'B', inherit: false, upInherit: true },
+  });
+  s = pityState(t, [start, switchB]);
+  assert.equal(s.pity, 0);
+  assert.equal(s.upPity, 50);
+});
+
+test('UP hard pity hits add to historical counts and recalculate after edits and deletions', () => {
+  const t = track();
+  t.rules.upHardPity = 120;
+  t.baseline = {
+    ...emptyBaseline,
+    counts: { SSR: 2, R: 237 },
+    up: 2,
+    upHardHits: 2,
+    upPity: 119,
+    pity: 39,
+  };
+  validateTrack(t);
+  const hit = record([result('SSR', 1, 'up')]);
+  const more = record([result('R', 119), result('SSR', 1, 'up')]);
+  assert.equal(summarize(t, [hit, more], [t]).upHardHits, 4);
+  assert.equal(pityState(t, [hit]).upHardHits, 3);
+  assert.equal(pityState(t, []).upHardHits, 2);
+  hit.gift = true;
+  assert.equal(pityState(t, [hit]).upHardHits, 2);
+  hit.gift = false;
+  hit.results[0].outcome = 'off';
+  assert.equal(pityState(t, [hit]).upHardHits, 2);
+  t.baseline.upPity = 50;
+  hit.results[0].outcome = 'up';
+  assert.equal(pityState(t, [hit]).upHardHits, 2);
+  t.baseline.upPity = null;
+  assert.equal(pityState(t, [hit]).upHardHits, 2);
+  t.baseline.upPity = 119;
+  hit.ordered = false;
+  assert.equal(pityState(t, [hit]).upHardHits, 2);
+  t.baseline.upHardHits = 3;
+  assert.throws(() => validateTrack(t), /大保底觸發次數/);
+});
+
+test('UP hard pity hit totals survive pool switches while progress follows its own inheritance', () => {
+  const t = track();
+  t.rules.upHardPity = 120;
+  const hit = record([result('R', 119), result('SSR', 1, 'up')]);
+  const change = record([], {
+    kind: 'cycle_reset',
+    note: 'B',
+    setPool: { id: 'B', inherit: true, upInherit: false },
+  });
+  assert.equal(pityState(t, [hit, change]).upHardHits, 1);
+  assert.equal(pityState(t, [hit, change, record([result('SSR', 1, 'up')])]).upHardHits, 1);
+  assert.equal(
+    pityState(t, [hit, change, record([result('R', 119), result('SSR', 1, 'up')])]).upHardHits,
+    2,
+  );
+});
 test('baseline plus new draws does not invent historical events', () => {
   const t = track();
   t.baseline = {

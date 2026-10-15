@@ -8,6 +8,8 @@ export const rulesSchema = z
       .min(2)
       .max(8),
     hardPity: count.default(0),
+    upHardPity: count.default(0),
+    upInheritPity: z.boolean().default(false),
     softStart: count.default(0),
     softStep: z.number().min(0).max(100).default(0),
     upRate: z.number().min(0).max(100).default(50),
@@ -32,6 +34,8 @@ export const rulesSchema = z
 export const baselineSchema = z.object({
   counts: z.record(z.string(), count).default({}),
   pity: count.nullable().default(0),
+  upPity: count.nullable().optional(),
+  upHardHits: count.optional(),
   up: count.default(0),
   off: count.default(0),
   guaranteed: z.boolean().nullable().default(false),
@@ -63,6 +67,7 @@ export const recordSchema = z
     at: z.string().datetime({ offset: true }),
     ordered: z.boolean(),
     kind: z.enum(['draw', 'reward', 'cycle_reset']).default('draw'),
+    gift: z.boolean().default(false),
     setPool: z
       .object({
         id: z.string().trim().min(1).max(100),
@@ -70,6 +75,7 @@ export const recordSchema = z
         stage: count.optional(),
         guaranteed: z.boolean().nullable().optional(),
         inherit: z.boolean().optional(),
+        upInherit: z.boolean().optional(),
       })
       .optional(),
     tenPull: z
@@ -84,6 +90,8 @@ export const recordSchema = z
     note: z.string().max(2000).default(''),
   })
   .superRefine((r, ctx) => {
+    if (r.gift && r.kind !== 'draw')
+      ctx.addIssue({ code: 'custom', message: '贈送標記只能用於抽卡紀錄' });
     if (r.setPool && r.kind !== 'cycle_reset')
       ctx.addIssue({ code: 'custom', message: '套裝池切換資訊只能用於切換紀錄' });
     const total = r.results.reduce((s, x) => s + x.count, 0);
@@ -112,7 +120,12 @@ export const recordSchema = z
     }
   });
 type ParsedRules = z.infer<typeof rulesSchema>;
-export type Rules = Omit<ParsedRules, 'setPitySteps' | 'inheritPity'> & {
+export type Rules = Omit<
+  ParsedRules,
+  'setPitySteps' | 'inheritPity' | 'upHardPity' | 'upInheritPity'
+> & {
+  upHardPity?: number;
+  upInheritPity?: boolean;
   inheritPity?: boolean;
   /** 舊版卡池沒有套裝保底設定。 */
   setPitySteps?: ParsedRules['setPitySteps'];
@@ -141,7 +154,8 @@ type CompatibleTenPull = Omit<ParsedTenPull, 'setOutcome'> & {
   /** 舊版快速十抽沒有套裝 UP／歪欄位。 */
   setOutcome?: ParsedTenPull['setOutcome'];
 };
-export type DrawRecord = Omit<ParsedRecord, 'tenPull'> & {
+export type DrawRecord = Omit<ParsedRecord, 'tenPull' | 'gift'> & {
+  gift?: boolean;
   /** 舊版紀錄沒有這個欄位；讀入時 recordSchema 會自動補成 null。 */
   tenPull?: CompatibleTenPull | null;
   id: string;
@@ -216,9 +230,13 @@ export function validateTrack(t: Track | z.infer<typeof trackSchema>) {
     throw new Error('歷史資料含未定義的稀有度');
   if (t.baseline.up + t.baseline.off > top)
     throw new Error('歷史 UP 與歪的數量不可超過最高稀有度數量');
+  if ((t.baseline.upHardHits ?? 0) > t.baseline.up)
+    throw new Error('大保底觸發次數不可超過歷史 UP 數量');
   const total = Object.values(t.baseline.counts).reduce((a, b) => a + b, 0);
   if (t.baseline.pity !== null && t.baseline.pity > total)
     throw new Error('歷史墊抽不可超過歷史總抽數');
+  if (t.baseline.upPity != null && t.baseline.upPity > total)
+    throw new Error('大保底歷史墊抽不可超過歷史總抽數');
   if (t.baseline.secondaryPity != null && t.baseline.secondaryPity > total)
     throw new Error('第二列歷史墊抽不可超過歷史總抽數');
   if (t.baseline.intervals.length > top) throw new Error('歷史出貨間隔筆數不可超過最高稀有度數量');
@@ -293,6 +311,8 @@ export function validateGroups(tracks: Track[]) {
           (t) =>
             Object.values(t.baseline.counts).some((n) => n > 0) ||
             t.baseline.pity !== 0 ||
+            (t.baseline.upPity != null && t.baseline.upPity !== 0) ||
+            (t.baseline.upHardHits ?? 0) !== 0 ||
             t.baseline.guaranteed !== false,
         )
       )

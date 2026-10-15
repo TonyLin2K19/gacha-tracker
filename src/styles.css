@@ -592,6 +592,13 @@ h1 .icon-button {
   align-items: flex-end;
   gap: 5px;
 }
+.pity-cell .up-pity-progress {
+  display: block;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
 .pity-cell small {
   font-size: 12px;
 }

@@ -336,6 +336,15 @@ export function TrackForm({
               onChange={(e) => patch({ hardPity: Number(e.target.value) })}
             />
           </Field>
+          <Field label="大保底：必 UP 抽數" hint="0 關閉；歪不歸零，每次出 UP 後重新累積">
+            <input
+              type="number"
+              min="0"
+              disabled={rules.linkLastFour}
+              value={rules.upHardPity ?? 0}
+              onChange={(e) => patch({ upHardPity: Number(e.target.value) })}
+            />
+          </Field>
           <Field label="出貨時 UP 機率 %">
             <input
               type="number"
@@ -385,6 +394,18 @@ export function TrackForm({
           />
           歪後，下次最高稀有度必為 UP
         </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={rules.upInheritPity ?? false}
+            disabled={rules.linkLastFour || !rules.upHardPity}
+            onChange={(e) => patch({ upInheritPity: e.target.checked })}
+          />
+          大保底換池時繼承（獨立於一般保底）
+        </label>
+        <p className="help">
+          關閉時新池的大保底從零開始，切回舊池恢復原進度。贈送抽不影響任何保底。
+        </p>
         <div className="section-title">
           快速十抽 <span>只影響輸入排列，資料仍按第 1～10 抽保存</span>
         </div>
@@ -440,7 +461,7 @@ export function TrackForm({
             rows={2}
             value={rules.notes}
             onChange={(e) => patch({ notes: e.target.value })}
-            placeholder="例如：累積 180 抽可兌換；額外贈送請記為獎勵"
+            placeholder="例如：累積 180 抽可兌換；贈送抽可勾選贈送，直接獲得的角色請記為獎勵"
           />
         </Field>
         <button
@@ -498,6 +519,37 @@ export function TrackForm({
                   onChange={(e) => setBaseline({ ...baseline, up: Number(e.target.value) })}
                 />
               </Field>
+              {!!rules.upHardPity && !rules.linkLastFour && (
+                <Field label="大保底起始墊抽" hint="上次 UP 後的有效抽數；留空代表未知">
+                  <input
+                    type="number"
+                    min="0"
+                    value={baseline.upPity ?? ''}
+                    onChange={(e) =>
+                      setBaseline({
+                        ...baseline,
+                        upPity: e.target.value === '' ? null : Number(e.target.value),
+                      })
+                    }
+                  />
+                </Field>
+              )}
+              {!!rules.upHardPity && !rules.linkLastFour && (
+                <Field
+                  label="歷史大保底觸發次數"
+                  hint="已包含在歷史 UP 數量內；後續確認的觸發會自動累加"
+                >
+                  <input
+                    type="number"
+                    min="0"
+                    max={baseline.up}
+                    value={baseline.upHardHits ?? 0}
+                    onChange={(e) =>
+                      setBaseline({ ...baseline, upHardHits: Number(e.target.value) })
+                    }
+                  />
+                </Field>
+              )}
               <Field label={rules.linkLastFour ? '套裝歷史歪的數量' : '歷史歪的數量'}>
                 <input
                   type="number"
@@ -649,6 +701,7 @@ export function RecordForm({
     [kind, setKind] = useState(record?.kind || 'draw'),
     [ordered, setOrdered] = useState(record?.ordered ?? true),
     [note, setNote] = useState(record?.note || '');
+  const [gift, setGift] = useState(record?.gift ?? false);
   const [lines, setLines] = useState(
     record
       ? record.results.map((x) => `${x.rarity},${x.count},${x.outcome}`).join('\n')
@@ -687,6 +740,7 @@ export function RecordForm({
           trackId: track.id,
           at: new Date(at).toISOString(),
           kind,
+          gift: kind === 'draw' && gift,
           ordered: mode === 'single' || ordered,
           results,
           note,
@@ -740,6 +794,12 @@ export function RecordForm({
             </select>
           </Field>
         </div>
+        {kind === 'draw' && (
+          <label className="check">
+            <input type="checkbox" checked={gift} onChange={(e) => setGift(e.target.checked)} />
+            贈送（計入抽取統計，不影響保底）
+          </label>
+        )}
         {mode === 'single' ? (
           <>
             <div className="form-grid">
@@ -1107,10 +1167,12 @@ export function QuickTenForm({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const layout = track.rules.tenPullLayout ?? 'row';
+  const [gift, setGift] = useState(record?.gift ?? false);
   const order =
     layout === 'column' ? [0, 2, 4, 6, 8, 1, 3, 5, 7, 9] : [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
   const hasTopSet = linked && slots[6].rarity === top;
   const initialGuaranteedSet =
+    !gift &&
     hasTopSet &&
     (record?.tenPull?.setOutcome === 'initial' ||
       (previousSetState?.target === 90 && previousSetState.setCount === 0));
@@ -1157,6 +1219,7 @@ export function QuickTenForm({
           trackId: track.id,
           at: new Date(at).toISOString(),
           kind: 'draw',
+          gift,
           ordered: true,
           tenPull: {
             linkedLastFour: linked,
@@ -1204,6 +1267,10 @@ export function QuickTenForm({
           />
         </Field>
         <div className="ten-pull-toolbar">
+          <label className="check">
+            <input type="checkbox" checked={gift} onChange={(e) => setGift(e.target.checked)} />
+            贈送（不影響保底）
+          </label>
           <label className="check">
             <input
               type="checkbox"

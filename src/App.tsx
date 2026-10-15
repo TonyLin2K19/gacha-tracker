@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, Fragment } from 'react';
+import { version as appVersion } from '../package.json';
 import {
   useReactTable,
   getCoreRowModel,
@@ -82,6 +83,15 @@ function GameAvatar({ game, tone }: { game: Game; tone: number }) {
   );
 }
 type Row = Track & { stats: Stats };
+function UpPityProgress({ track, stats }: { track: Track; stats: Stats }) {
+  if (!track.rules.upHardPity || track.rules.linkLastFour) return null;
+  return (
+    <small className={`up-pity-progress ${stats.nextUpGuaranteed ? 'good' : 'muted'}`}>
+      大保底 {stats.upPity === null ? '未知' : num(stats.upPity)} / {track.rules.upHardPity}
+      {stats.nextUpGuaranteed ? ' · 下抽必出 UP' : ''}
+    </small>
+  );
+}
 function RecentIntervals({ intervals }: { intervals: RecentInterval[] }) {
   return (
     <div className="intervals">
@@ -317,9 +327,7 @@ export default function App() {
         minSize: 58,
         accessorFn: (r) => r.stats.counts[name] || 0,
         cell: ({ getValue }) => (
-          <span className={overviewRarityClass(name, tracks)}>
-            {num(getValue<number>())}
-          </span>
+          <span className={overviewRarityClass(name, tracks)}>{num(getValue<number>())}</span>
         ),
       })),
       {
@@ -383,6 +391,7 @@ export default function App() {
               {setState?.marksMode && setState.nextGuaranteed && (
                 <small className="good">下次十連必出套裝</small>
               )}
+              <UpPityProgress track={r} stats={r.stats} />
               {target > 0 && pity !== null && (
                 <div className="pity-track">
                   <i style={{ width: Math.min(100, (pity / target) * 100) + '%' }} />
@@ -429,7 +438,9 @@ export default function App() {
           const guaranteed = row.original.stats.setState
             ? row.original.stats.setState.guaranteed
             : row.original.stats.guaranteed;
-          return !row.original.rules.guaranteeAfterLoss ? (
+          return row.original.stats.nextUpGuaranteed ? (
+            <span className="badge">下抽必出 UP</span>
+          ) : !row.original.rules.guaranteeAfterLoss ? (
             <span className="muted">未啟用</span>
           ) : guaranteed === null ? (
             <span className="unknown">未知</span>
@@ -478,6 +489,16 @@ export default function App() {
         header: '已知保底次數',
         size: 120,
         accessorFn: (r) => r.stats.setState?.hardHits ?? r.stats.hardHits,
+      },
+      {
+        id: 'upHardHits',
+        header: '大保底觸發次數',
+        size: 125,
+        accessorFn: (r) => r.stats.upHardHits,
+        cell: ({ row }) =>
+          row.original.rules.upHardPity && !row.original.rules.linkLastFour
+            ? num(row.original.stats.upHardHits)
+            : '—',
       },
       { id: 'rewards', header: '額外獎勵', size: 90, accessorFn: (r) => r.stats.rewards },
       {
@@ -552,6 +573,7 @@ export default function App() {
             {stats.pity === null ? <span className="unknown">未知</span> : num(stats.pity)}
             <small> / {target || '—'}</small>
           </span>
+          <UpPityProgress track={row} stats={stats} />
           {target > 0 && stats.pity !== null && (
             <div className="pity-track">
               <i style={{ width: Math.min(100, (stats.pity / target) * 100) + '%' }} />
@@ -575,7 +597,9 @@ export default function App() {
         </>
       );
     if (columnId === 'guarantee')
-      return !row.rules.guaranteeAfterLoss ? (
+      return stats.nextUpGuaranteed ? (
+        <span className="badge">下抽必出 UP</span>
+      ) : !row.rules.guaranteeAfterLoss ? (
         <span className="muted">未啟用</span>
       ) : stats.guaranteed === null ? (
         <span className="unknown">未知</span>
@@ -638,6 +662,7 @@ export default function App() {
       '最近已知出貨間隔(新到舊)',
       '歪',
       'UP',
+      '大保底觸發次數',
     ];
     const contents = [
       headers,
@@ -653,6 +678,7 @@ export default function App() {
         r.stats.intervals.slice(-5).reverse().join(' / '),
         r.stats.off,
         r.stats.up,
+        r.stats.upHardHits,
       ]),
     ];
     const csv = contents
@@ -775,7 +801,7 @@ export default function App() {
           </button>
           {!collapsed && (
             <div className="local-status">
-              <i /> UNRAID · SELF HOSTED <small>v0.3.1</small>
+              <i /> UNRAID · SELF HOSTED <small>v{appVersion}</small>
             </div>
           )}
         </div>
@@ -1459,7 +1485,7 @@ export default function App() {
                               <td>
                                 <span
                                   className={
-                                    r.kind === 'reward' || r.kind === 'cycle_reset'
+                                    r.gift || r.kind === 'reward' || r.kind === 'cycle_reset'
                                       ? 'badge'
                                       : r.ordered
                                         ? 'muted'
@@ -1468,15 +1494,17 @@ export default function App() {
                                 >
                                   {r.kind === 'cycle_reset'
                                     ? '切換套裝池'
-                                    : r.kind === 'reward'
-                                      ? '額外獎勵'
-                                      : r.tenPull?.linkedLastFour
-                                        ? '十抽 · 同色套裝'
-                                        : r.tenPull
-                                          ? '快速十抽'
-                                          : r.ordered
-                                            ? '順序已知'
-                                            : '順序未知'}
+                                    : r.gift
+                                      ? '贈送 · 不計保底'
+                                      : r.kind === 'reward'
+                                        ? '額外獎勵'
+                                        : r.tenPull?.linkedLastFour
+                                          ? '十抽 · 同色套裝'
+                                          : r.tenPull
+                                            ? '快速十抽'
+                                            : r.ordered
+                                              ? '順序已知'
+                                              : '順序未知'}
                                 </span>
                               </td>
                               <td className="note-cell" title={r.note}>

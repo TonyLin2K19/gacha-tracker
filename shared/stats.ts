@@ -23,8 +23,17 @@ export function intervalClass(interval: RecentInterval) {
 
 export function pityState(track: Track, records: DrawRecord[], baseline = track.baseline) {
   const top = track.rules.rarities[0].name;
+  const upTarget = !track.rules.linkLastFour ? track.rules.upHardPity || 0 : 0;
+  let upHardHits = baseline.upHardHits ?? 0;
   let pity: number | null = baseline.pity,
     guaranteed: boolean | null = baseline.guaranteed;
+  const baselineTotal = Object.values(baseline.counts).reduce((sum, n) => sum + n, 0);
+  let upPity: number | null =
+    baseline.upPity !== undefined
+      ? baseline.upPity
+      : (baseline.counts[top] || 0) === baseline.off && baseline.up === 0
+        ? baselineTotal
+        : null;
   const intervals = [...baseline.intervals];
   const recentIntervals: RecentInterval[] = intervals.map((count) => ({
     count,
@@ -34,15 +43,22 @@ export function pityState(track: Track, records: DrawRecord[], baseline = track.
   let hardHits = 0;
   let activePool = 'initial';
   const poolGuarantees = new Map<string, boolean | null>();
-  const poolProgress = new Map<string, { pity: number | null; guaranteed: boolean | null }>();
+  const poolProgress = new Map<
+    string,
+    { pity: number | null; guaranteed: boolean | null; upPity: number | null }
+  >();
   for (const r of chronology(records)) {
     if (!track.rules.linkLastFour && r.kind === 'cycle_reset') {
-      poolProgress.set(activePool, { pity, guaranteed });
+      poolProgress.set(activePool, { pity, guaranteed, upPity });
       activePool = r.setPool?.id ?? r.id;
       if (!(r.setPool?.inherit ?? track.rules.inheritPity ?? true)) {
         const prior = poolProgress.get(activePool);
         pity = prior?.pity ?? (prior ? null : 0);
         guaranteed = prior?.guaranteed ?? (prior ? null : false);
+      }
+      if (!(r.setPool?.upInherit ?? track.rules.upInheritPity ?? false)) {
+        const prior = poolProgress.get(activePool);
+        upPity = prior ? prior.upPity : 0;
       }
       continue;
     }
@@ -53,10 +69,15 @@ export function pityState(track: Track, records: DrawRecord[], baseline = track.
         poolGuarantees.get(activePool) ?? (poolGuarantees.has(activePool) ? null : false);
       continue;
     }
-    if (r.kind !== 'draw') continue;
+    if (r.kind !== 'draw' || r.gift) continue;
     const tops = r.results.filter((x) => x.rarity === top);
     const topCount = tops.reduce((s, x) => s + x.count, 0);
     const total = r.results.reduce((s, x) => s + x.count, 0);
+    if (!r.ordered) {
+      // Any possible UP makes its position unknowable; explicit off-banner SSRs do not reset it.
+      if (tops.some((x) => x.outcome !== 'off')) upPity = null;
+      else if (upPity !== null) upPity += total;
+    }
     if (!r.ordered && topCount > 0) {
       pity = null;
       if (track.rules.guaranteeAfterLoss) {
@@ -73,6 +94,19 @@ export function pityState(track: Track, records: DrawRecord[], baseline = track.
       results.slice(6).every((x) => x.rarity === top);
     for (let position = 0; position < results.length; position++) {
       const x = results[position];
+      if (r.ordered) {
+        if (
+          upTarget &&
+          upPity !== null &&
+          upPity + 1 === upTarget &&
+          x.rarity === top &&
+          x.outcome === 'up'
+        )
+          upHardHits++;
+        if (x.rarity === top && x.outcome === 'up') upPity = 0;
+        else if (x.rarity === top && x.outcome === 'unknown') upPity = null;
+        else if (upPity !== null) upPity++;
+      }
       if (linkedTopSet && position === 6) {
         // 四件套在畫面上是四個 SSR，但對 55 抽保底只算一次，並視為第 10 抽觸發。
         if (pity !== null) {
@@ -110,19 +144,33 @@ export function pityState(track: Track, records: DrawRecord[], baseline = track.
     // Unordered batches without a top rarity only advance the known counter.
     void total;
   }
-  const nextRate =
-    pity === null
+  const nextUpGuaranteed = !!upTarget && upPity !== null && upPity + 1 >= upTarget;
+  const nextRate = nextUpGuaranteed
+    ? 100
+    : upTarget && upPity === null
       ? null
-      : track.rules.hardPity && pity + 1 >= track.rules.hardPity
-        ? 100
-        : Math.min(
-            100,
-            track.rules.rarities[0].rate +
-              (track.rules.softStart && pity + 1 >= track.rules.softStart
-                ? (pity + 2 - track.rules.softStart) * track.rules.softStep
-                : 0),
-          );
-  return { pity, guaranteed, intervals, recentIntervals, hardHits, nextRate };
+      : pity === null
+        ? null
+        : track.rules.hardPity && pity + 1 >= track.rules.hardPity
+          ? 100
+          : Math.min(
+              100,
+              track.rules.rarities[0].rate +
+                (track.rules.softStart && pity + 1 >= track.rules.softStart
+                  ? (pity + 2 - track.rules.softStart) * track.rules.softStep
+                  : 0),
+            );
+  return {
+    pity,
+    upPity,
+    upHardHits,
+    nextUpGuaranteed,
+    guaranteed: nextUpGuaranteed ? true : guaranteed,
+    intervals,
+    recentIntervals,
+    hardHits,
+    nextRate,
+  };
 }
 
 export function linkedSetState(track: Track, records: DrawRecord[]) {
@@ -175,7 +223,7 @@ export function linkedSetState(track: Track, records: DrawRecord[]) {
       cycleNumber = [...pools.keys()].indexOf(cycleId) + 1;
       continue;
     }
-    if (record.kind !== 'draw' || !record.tenPull) continue;
+    if (record.kind !== 'draw' || record.gift || !record.tenPull) continue;
     const isTopSet =
       record.tenPull.linkedLastFour && record.tenPull.setRarity === track.rules.rarities[0].name;
     if (isTopSet) {

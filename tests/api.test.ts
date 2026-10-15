@@ -209,6 +209,82 @@ test('HTTP: baseline import, duplicate rejection, record editing, restore and st
       (await request(`/tracks/${trackId}/pools/limited`, 'PUT', { name: '限定修正名' })).status,
       200,
     );
+    const upTrack = await request('/tracks', 'POST', {
+      ...payload,
+      pool: '120 大保底測試',
+      baseline: {
+        ...emptyBaseline,
+        counts: { SSR: 2, R: 117 },
+        up: 2,
+        upPity: 119,
+        pity: 39,
+        upHardHits: 1,
+      },
+      rules: { ...defaultRules, hardPity: 80, upHardPity: 120, upInheritPity: true },
+    });
+    assert.equal(upTrack.status, 200);
+    const upTrackId = upTrack.data.id;
+    const gift = {
+      ...rec,
+      trackId: upTrackId,
+      gift: true,
+      tenPull: { linkedLastFour: false, setRarity: null },
+      results: [
+        { rarity: 'R', count: 9 },
+        { rarity: 'SSR', count: 1, outcome: 'up' },
+      ],
+    };
+    const giftSaved = await request('/records', 'POST', gift);
+    assert.equal(giftSaved.status, 200);
+    const switchPayload = {
+      ...rec,
+      trackId: upTrackId,
+      kind: 'cycle_reset',
+      results: [],
+      note: '大保底新池',
+      setPool: { create: true, inherit: false },
+    };
+    const upSwitch = await request('/records', 'POST', switchPayload);
+    assert.equal(upSwitch.status, 200);
+    const upBackup = (await request('/backup')).data;
+    const savedSwitch = upBackup.records.find((r: { id: string }) => r.id === upSwitch.data.id);
+    assert.equal(savedSwitch.setPool.upInherit, true);
+    assert.equal(
+      upBackup.records.find((r: { id: string }) => r.id === giftSaved.data.id).gift,
+      true,
+    );
+    assert.equal((await request('/restore', 'POST', upBackup)).status, 200);
+    const savedTrack = upBackup.tracks.find((t: { id: string }) => t.id === upTrackId);
+    assert.equal(savedTrack.rules.upHardPity, 120);
+    assert.equal(savedTrack.baseline.upHardHits, 1);
+    assert.equal(
+      (
+        await request('/tracks/' + upTrackId, 'PUT', {
+          ...savedTrack,
+          rules: { ...savedTrack.rules, upInheritPity: false },
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await request('/records/' + upSwitch.data.id, 'PUT', {
+          ...switchPayload,
+          setPool: { id: savedSwitch.setPool.id, inherit: false },
+        })
+      ).status,
+      200,
+    );
+    state = (await request('/state')).data;
+    assert.equal(
+      state.tracks.find((t: { id: string }) => t.id === upTrackId).baseline.upHardHits,
+      1,
+    );
+    assert.equal(
+      state.records.find((r: { id: string }) => r.id === upSwitch.data.id).setPool.upInherit,
+      true,
+    );
+    assert.equal(state.records.find((r: { id: string }) => r.id === giftSaved.data.id).gift, true);
     const beforeDelete = (await request('/state')).data;
     const filesBefore = readdirSync(join(dir, 'backups'));
     assert.equal(
